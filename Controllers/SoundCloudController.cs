@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using Serilog;
 
 using Schlauchboot.Hosting.SoundCloud.Models.Meta;
+using Schlauchboot.Hosting.SoundCloud.Manager.Methods;
+using Schlauchboot.Hosting.SoundCloud.Manager.Models.SoundCloud;
 
 namespace Schlauchboot.Hosting.SoundCloud.Controllers
 {
@@ -47,6 +49,7 @@ namespace Schlauchboot.Hosting.SoundCloud.Controllers
 
             var soundCloudManager = new Manager.Methods.SoundCloud();
             string trackName = string.Empty;
+            string filePath = string.Empty;
 
             try
             {
@@ -60,19 +63,28 @@ namespace Schlauchboot.Hosting.SoundCloud.Controllers
 
                 var trackMediaUrl = soundCloudManager.QueryTrackMediaUrl(trackMediaInformation);
 
-                var ffmpegManager = new Manager.Methods.Ffmpeg();
-                await ffmpegManager.DownloadTrack(trackMediaUrl, $"C:\\Temp\\{trackName}.mp3");
+                filePath = $"C:\\Temp\\{trackName}.mp3";
+
+                var ffmpegManager = new Ffmpeg();
+                await ffmpegManager.DownloadTrack(trackMediaUrl, filePath);
 
                 _logger.Information(string.Join(" ", requestIp, _logMessages["fileDownload"]));
 
-                _logger.Information(string.Join(" ", requestIp, _logMessages["fileUpload"]));
+                var trackMediaInformationMod = new TrackInformationMod()
+                {
+                    artist = trackInformation.User.Username,
+                    album = trackInformation.User.Username,
+                    title = trackInformation.Title
+                };
 
-                var fileManager = new Manager.Methods.File(_logger, requestIp);
-                var fileUploadResponse = fileManager.UploadFile($"C:\\Temp\\{trackName}.mp3");
+                var id3Manager = new Id3();
+                id3Manager.SetFileMetadata(filePath, trackMediaInformationMod);
+
+                var fileStream = await System.IO.File.ReadAllBytesAsync(filePath);
 
                 _logger.Information(string.Join(" ", requestIp, _logMessages["requestSuccess"]));
 
-                return StatusCode(200, new OkResponse(fileUploadResponse.link));
+                return File(fileStream, "application/octet-stream");
             }
             catch (Exception processException)
             {
