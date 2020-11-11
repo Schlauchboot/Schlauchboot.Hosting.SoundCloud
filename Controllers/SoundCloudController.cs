@@ -22,7 +22,8 @@ namespace Schlauchboot.Hosting.SoundCloud.Controllers
             { "fileDownload", "The requested File has been downloaded successfully!" },
             { "requestSuccess", "The Request was processed without Issues!" },
             { "requestError", "The Request was aborted due to:" },
-            { "fileCleanup", "All associated Files have been cleaned up!" }
+            { "fileCleanup", "All associated Files have been cleaned up!" },
+            { "fileUpload", "The Upload to the specified Hoster has been started!" }
         };
 
         public SoundCloudController(ILogger logger)
@@ -64,7 +65,9 @@ namespace Schlauchboot.Hosting.SoundCloud.Controllers
 
                 _logger.Information(string.Join(" ", requestIp, _logMessages["fileDownload"]));
 
-                var fileManager = new Manager.Methods.File();
+                _logger.Information(string.Join(" ", requestIp, _logMessages["fileUpload"]));
+
+                var fileManager = new Manager.Methods.File(_logger, requestIp);
                 var fileUploadResponse = fileManager.UploadFile($"C:\\Temp\\{trackName}.mp3");
 
                 _logger.Information(string.Join(" ", requestIp, _logMessages["requestSuccess"]));
