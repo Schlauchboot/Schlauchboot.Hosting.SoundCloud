@@ -8,13 +8,13 @@ Sometimes, this API is available at [mphosting.ddnss.de](https://mphosting.ddnss
 
 - Method: POST
 - Uri: https://mphosting.ddnss.de/api/SoundCloud
-- Body: { "clientId": "YOUR_SOUNDCLOUD_CLIENT_ID", "trackUrl": "TRACK_URL" }
+- Body: { "clientId": "YOUR_SOUNDCLOUD_CLIENT_ID", "soundcloudUrl": "TRACK_URL" }
 
 ## Planned Tasks
 
 - [X] Provide a way to download singular Songs
 - [ ] Implement Logic that regards easily downloadable Tracks
-- [ ] Implement Playlist-Support
+- [X] Implement Playlist-Support
 - [ ] Create an Endpoint for Premium-Accounts
 
 ## Additional Information
