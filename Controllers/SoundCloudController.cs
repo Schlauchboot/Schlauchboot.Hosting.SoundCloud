@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
@@ -16,17 +17,8 @@ namespace Schlauchboot.Hosting.SoundCloud.Controllers
     public class SoundCloudController : ControllerBase
     {
         private readonly ILogger _logger;
-        private readonly Dictionary<string, string> _logMessages = new Dictionary<string, string>()
-        {
-            { "requestReceived", "A Request has been received!" },
-            { "requestMalformed", "The Request from was malformed!" },
-            { "requestAuthentication", "The Request should have authenticated successfully!" },
-            { "fileDownload", "The requested File has been downloaded successfully!" },
-            { "requestSuccess", "The Request was processed without Issues!" },
-            { "requestError", "The Request was aborted due to:" },
-            { "fileCleanup", "All associated Files have been cleaned up!" },
-            { "fileUpload", "The Upload to the specified Hoster has been started!" }
-        };
+        private readonly Dictionary<string, string> _logMessages = new LogMessage().logMessages;
+        private readonly string _tempFileStore = new Meta().GetAssemblyPath() + "\\TempFileStore";
 
         public SoundCloudController(ILogger logger)
         {
@@ -40,51 +32,115 @@ namespace Schlauchboot.Hosting.SoundCloud.Controllers
 
             _logger.Information(string.Join(" ", requestIp, _logMessages["requestReceived"]));
 
-            if (string.IsNullOrEmpty(requestBody.clientId) || string.IsNullOrEmpty(requestBody.trackUrl))
+            if (string.IsNullOrEmpty(requestBody.clientId) || string.IsNullOrEmpty(requestBody.soundcloudUrl.ToString()))
             {
                 _logger.Information(string.Join(" ", requestIp, _logMessages["requestMalformed"]));
 
                 return StatusCode(400, new ErrorResponse(_logMessages["requestMalformed"]));
             }
-
+                    
             var soundCloudManager = new Manager.Methods.SoundCloud();
-            string trackName = string.Empty;
-            string filePath = string.Empty;
+
+            var createdFiles = new List<string>();
 
             try
             {
-                var trackInformation = soundCloudManager.ResolveTrackUrl(requestBody.trackUrl, requestBody.clientId);
-                trackName = trackInformation.Title;
-
-                _logger.Information(string.Join(" ", requestIp, _logMessages["requestAuthentication"]));
-
-                var trackMediaInformation = soundCloudManager.QueryTrackMediaInformation(trackInformation.Media.Transcodings,
-                    requestBody.clientId);
-
-                var trackMediaUrl = soundCloudManager.QueryTrackMediaUrl(trackMediaInformation);
-
-                filePath = $"C:\\Temp\\{trackName}.mp3";
-
-                var ffmpegManager = new Ffmpeg();
-                await ffmpegManager.DownloadTrack(trackMediaUrl, filePath);
-
-                _logger.Information(string.Join(" ", requestIp, _logMessages["fileDownload"]));
-
-                var trackMediaInformationMod = new TrackInformationMod()
+                if (requestBody.soundcloudUrl.ToString().Contains("sets")) //Use regex later
                 {
-                    artist = trackInformation.User.Username,
-                    album = trackInformation.User.Username,
-                    title = trackInformation.Title
-                };
+                    _logger.Information(string.Join(" ", requestIp, _logMessages["requestPlaylist"]));
 
-                var id3Manager = new Id3();
-                id3Manager.SetFileMetadata(filePath, trackMediaInformationMod);
+                    var playlistInformation = soundCloudManager.ResolvePlaylistUrl(requestBody.soundcloudUrl, requestBody.clientId);
 
-                var fileStream = await System.IO.File.ReadAllBytesAsync(filePath);
+                    _logger.Information(string.Join(" ", requestIp, _logMessages["requestAuthentication"]));
 
-                _logger.Information(string.Join(" ", requestIp, _logMessages["requestSuccess"]));
+                    var playlistFolder = Directory.CreateDirectory($"{_tempFileStore}\\{playlistInformation.Title}");
 
-                return File(fileStream, "application/octet-stream");
+                    _logger.Information(string.Join(" ", requestIp, _logMessages["playlistInformation"]));
+
+                    foreach (var track in playlistInformation.Tracks)
+                    {
+                        var trackUrl = soundCloudManager.QueryTrackUrl(track.Id, requestBody.clientId);
+                        
+                        var trackInformation = soundCloudManager.ResolveTrackUrl(trackUrl, requestBody.clientId);
+
+                        var trackName = trackInformation.Title;
+
+                        var trackMediaUrl = soundCloudManager.QueryTrackTranscodings(trackInformation.Media.Transcodings, requestBody.clientId);
+                        
+                        var filePath = $"{_tempFileStore}\\{playlistInformation.Title}\\{trackName}.mp3";
+
+                        var trackM3u8 = soundCloudManager.QueryTrackM3u8(trackMediaUrl);
+
+                        var ffmpegManager = new Ffmpeg();
+                        await ffmpegManager.DownloadTrack(trackM3u8, filePath);
+
+                        _logger.Information(string.Join(" ", requestIp, _logMessages["fileDownloadPlaylist"]));
+
+                        var trackMediaInformationMod = new TrackInformationMod()
+                        {
+                            artist = trackInformation.User.Username,
+                            album = trackInformation.User.Username,
+                            title = trackInformation.Title
+                        };
+
+                        var id3Manager = new Id3();
+                        id3Manager.SetFileMetadata(filePath, trackMediaInformationMod);
+                    }
+
+                    string zipPath = $"{_tempFileStore}\\{playlistInformation.Title}.zip";
+
+                    var compressionManager = new Compression();
+                    compressionManager.CompressFolder(playlistFolder.FullName, zipPath);
+
+                    _logger.Information(string.Join(" ", requestIp, _logMessages["zipStatus"]));
+
+                    var fileStream = await System.IO.File.ReadAllBytesAsync(zipPath);
+
+                    Response.Headers.Add("File-Type", "zip");
+
+                    createdFiles.Add(zipPath);
+                    createdFiles.Add(playlistFolder.FullName);
+
+                    return File(fileStream, "application/octet-stream");
+                }
+                else
+                {
+                    var trackInformation = soundCloudManager.ResolveTrackUrl(requestBody.soundcloudUrl, requestBody.clientId);
+
+                    _logger.Information(string.Join(" ", requestIp, _logMessages["requestAuthentication"]));
+
+                    string trackName = trackInformation.Title;
+
+                    var trackMediaInformation = soundCloudManager.QueryTrackTranscodings(trackInformation.Media.Transcodings,
+                        requestBody.clientId);
+
+                    var trackMediaUrl = soundCloudManager.QueryTrackM3u8(trackMediaInformation);
+
+                    string filePath = $"{_tempFileStore}\\{trackName}.mp3";
+
+                    var ffmpegManager = new Ffmpeg();
+                    await ffmpegManager.DownloadTrack(trackMediaUrl, filePath);
+
+                    _logger.Information(string.Join(" ", requestIp, _logMessages["fileDownload"]));
+
+                    var trackMediaInformationMod = new TrackInformationMod()
+                    {
+                        artist = trackInformation.User.Username,
+                        album = trackInformation.User.Username,
+                        title = trackInformation.Title
+                    };
+
+                    var id3Manager = new Id3();
+                    id3Manager.SetFileMetadata(filePath, trackMediaInformationMod);
+
+                    var fileStream = await System.IO.File.ReadAllBytesAsync(filePath);
+
+                    _logger.Information(string.Join(" ", requestIp, _logMessages["requestSuccess"]));
+
+                    Response.Headers.Add("File-Type", "mp3");
+
+                    return File(fileStream, "application/octet-stream");
+                }
             }
             catch (Exception processException)
             {
@@ -94,12 +150,20 @@ namespace Schlauchboot.Hosting.SoundCloud.Controllers
             }
             finally
             {
-                if (System.IO.File.Exists($"C:\\Temp\\{trackName}.mp3"))
+                foreach (var file in createdFiles)
                 {
-                    System.IO.File.Delete($"C:\\Temp\\{trackName}.mp3");
-
-                    _logger.Information(string.Join(" ", requestIp, _logMessages["fileCleanup"]));
+                    if (Directory.Exists(file))
+                    {
+                        Directory.Delete(file, true);
+                    }
+                    else
+                    {
+                        System.IO.File.Delete(file);
+                    }
                 }
+                //Leaves still some unknow file behind when downloading singular Tracks...
+
+                _logger.Information(string.Join(" ", requestIp, _logMessages["fileCleanup"]));
             }
         }
     }

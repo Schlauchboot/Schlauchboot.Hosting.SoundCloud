@@ -1,8 +1,10 @@
-﻿namespace Schlauchboot.Hosting.SoundCloud.Models.Meta
+﻿using System;
+
+namespace Schlauchboot.Hosting.SoundCloud.Models.Meta
 {
     public class RequestBody
     {
         public string clientId { get; set; }
-        public string trackUrl { get; set; }
+        public Uri soundcloudUrl { get; set; }
     }
 }

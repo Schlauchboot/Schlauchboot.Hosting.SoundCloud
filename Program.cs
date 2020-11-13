@@ -1,10 +1,14 @@
+using System.IO;
 using System.Net;
 using System.Linq;
+using System.Reflection;
 using Microsoft.AspNetCore.Hosting;
 
 using Serilog;
 using Serilog.Events;
 using Microsoft.Extensions.Hosting;
+
+using Schlauchboot.Hosting.SoundCloud.Manager.Methods;
 
 namespace Schlauchboot.Hosting.SoundCloud
 {
@@ -12,6 +16,9 @@ namespace Schlauchboot.Hosting.SoundCloud
     {
         public static void Main(string[] args)
         {
+            var metaManager = new Meta();
+            var tempFileStore = $"{metaManager.GetAssemblyPath()}\\TempFileStore";
+            if (!Directory.Exists(tempFileStore)) { Directory.CreateDirectory(tempFileStore); }
             CreateHostBuilder(args).Build().Run();
         }
 
